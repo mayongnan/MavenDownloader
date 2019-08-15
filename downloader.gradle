@@ -1,0 +1,54 @@
+apply plugin: 'java'
+repositories {
+    //需要下载的依赖库所在仓库
+    google()
+    jcenter()
+}
+
+dependencies {
+    //需要下载的依赖库
+    compile 'com.android.support:appcompat-v7:28.0.0'
+}
+
+ext.copyArtifact = { repoDir ->
+    def configuration = configurations.compile
+    configuration.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+        def moduleVersionId = artifact.moduleVersion.id
+        def packageDir = moduleVersionId.group.replace(".", "/")
+        File moduleDir = new File(repoDir, "${packageDir}/${moduleVersionId.name}/${moduleVersionId.version}")
+        copy {
+            from(artifact.file)
+            into(moduleDir)
+        }
+    }
+}
+
+ext.copyPom = { repoDir ->
+    def configuration = configurations.compile
+    def componentIds = configuration.incoming.resolutionResult.allDependencies.collect {
+        it.selected.id
+    }
+    def result = project.dependencies.createArtifactResolutionQuery()
+            .forComponents(componentIds)
+            .withArtifacts(MavenModule, MavenPomArtifact)
+            .execute()
+    for (component in result.resolvedComponents) {
+        def componentId = component.id
+        if (componentId instanceof ModuleComponentIdentifier) {
+            def packageDir = componentId.group.replace(".", "/")
+            File moduleDir = new File(repoDir, "${packageDir}/${componentId.module}/${componentId.version}")
+            File pomFile = component.getArtifacts(MavenPomArtifact)[0].file
+            copy {
+                from(pomFile)
+                into(moduleDir)
+            }
+        }
+    }
+}
+
+task downloadDependencies() {
+    File repoDir = new File('./offline-repo')//存放要下载的依赖库的目标路径，可作为本地maven仓库使用
+    copyArtifact(repoDir)
+    copyPom(repoDir)
+}
+
